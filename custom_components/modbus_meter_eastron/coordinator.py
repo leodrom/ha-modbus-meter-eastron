@@ -85,6 +85,22 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 # stale cached values as if the bus were still healthy.
                 return {}
 
+        return await self._poll_devices()
+
+    async def _reconnect(self) -> None:
+        """Force a fresh TCP session after a transport-level read error."""
+        if self._client is None:
+            return
+        self._client.close()
+        if not await self._client.connect():
+            _LOGGER.warning(
+                "modbus_meter_eastron: reconnect to MTU %s (%s:%s) failed",
+                self.mtu_name,
+                self._ip,
+                self._port,
+            )
+
+    async def _poll_devices(self) -> dict[str, dict[str, Any]]:
         results: dict[str, dict[str, Any]] = {}
         now = time.monotonic()
 
@@ -160,7 +176,25 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 response = await self._client.read_input_registers(
                     sensor["register"], count=word_count, device_id=address
                 )
-        except (ModbusException, asyncio.TimeoutError, OSError) as err:
+        except OSError as err:
+            # Transport-level failure (socket reset, broken pipe, etc.) --
+            # the shared TCP session itself is bad, not just this one slave.
+            # Reconnect so the next read (this device or the next one) gets
+            # a fresh session.
+            _LOGGER.debug(
+                "modbus_meter_eastron: %s address %s '%s' socket error: %s -- reconnecting",
+                self.mtu_name,
+                address,
+                sensor["key"],
+                err,
+            )
+            await self._reconnect()
+            return None
+        except (ModbusException, asyncio.TimeoutError) as err:
+            # Protocol-level "slave didn't answer" -- normal for an offline
+            # device, the TCP session to the MTU itself is still fine, so
+            # don't reconnect (that would just disrupt every other device
+            # sharing this connection for no benefit).
             _LOGGER.debug(
                 "modbus_meter_eastron: %s address %s '%s' read failed: %s",
                 self.mtu_name,
