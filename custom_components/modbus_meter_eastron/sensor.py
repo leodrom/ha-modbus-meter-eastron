@@ -1,9 +1,10 @@
-"""Sensor platform for modbus_meter_eastron, populated via discovery from __init__.py."""
+"""Sensor platform for modbus_meter_eastron, populated from a ConfigEntry (see __init__.py)."""
 from __future__ import annotations
 
 import logging
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -14,30 +15,28 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: dict,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: dict | None = None,
 ) -> None:
-    if discovery_info is None:
-        return
+    data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = data["coordinator"]
+    mtu_name = data["mtu_name"]
 
     entities: list[ModbusMeterSensor] = []
-    for mtu in discovery_info["mtus"]:
-        coordinator = mtu["coordinator"]
-        for device in mtu["devices"]:
-            device_info = DeviceInfo(
-                identifiers={(DOMAIN, device["device_id"])},
-                name=device.get("meter_number", device["device_id"]),
-                manufacturer=device.get("type", "").capitalize() or None,
-                model=device.get("model"),
-                via_device=(DOMAIN, mtu["name"]),
+    for device in data["devices"]:
+        device_info = DeviceInfo(
+            identifiers={(DOMAIN, device["device_id"])},
+            name=device.get("meter_number", device["device_id"]),
+            manufacturer=device.get("type", "").capitalize() or None,
+            model=device.get("model"),
+            via_device=(DOMAIN, mtu_name),
+        )
+        for sensor_def in device["sensors"]:
+            entities.append(
+                ModbusMeterSensor(coordinator, device["device_id"], sensor_def, device_info)
             )
-            for sensor_def in device["sensors"]:
-                entities.append(
-                    ModbusMeterSensor(coordinator, device["device_id"], sensor_def, device_info)
-                )
 
     async_add_entities(entities)
 

@@ -61,6 +61,11 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._last_read: dict[tuple[str, str], float] = {}
         self._unavailable_streak: dict[str, int] = {}
 
+    async def async_shutdown(self) -> None:
+        if self._client is not None:
+            self._client.close()
+        await super().async_shutdown()
+
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         if self._client is None:
             self._client = AsyncModbusTcpClient(
