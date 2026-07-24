@@ -1,0 +1,7 @@
+{
+  "config": {
+    "abort": {
+      "yaml_only": "modbus_meter_eastron is configured via YAML only (hangar.yaml) and does not support manual setup from the UI."
+    }
+  }
+}

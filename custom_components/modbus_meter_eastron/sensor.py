@@ -31,6 +31,7 @@ async def async_setup_entry(
             name=device.get("meter_number", device["device_id"]),
             manufacturer=device.get("type", "").capitalize() or None,
             model=device.get("model"),
+            hw_version=f"Modbus address {device['address']}",
             via_device=(DOMAIN, mtu_name),
         )
         for sensor_def in device["sensors"]:

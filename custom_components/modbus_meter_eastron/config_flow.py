@@ -24,3 +24,10 @@ class ModbusMeterEastronConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(import_data["name"])
         self._abort_if_unique_id_configured(updates=import_data)
         return self.async_create_entry(title=import_data["name"], data=import_data)
+
+    async def async_step_user(self, user_input: dict | None = None) -> Any:
+        # No manual setup: MTUs only come from hangar.yaml (see
+        # config_schema.py). This just makes the "Add hub" button in
+        # Settings -> Devices & Services fail cleanly instead of showing a
+        # broken/undefined form.
+        return self.async_abort(reason="yaml_only")
