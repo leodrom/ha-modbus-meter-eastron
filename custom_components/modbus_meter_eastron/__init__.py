@@ -72,6 +72,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=mtu_conf["name"],
         manufacturer="WaveShare",
         model="Modbus TCP-RTU gateway",
+        # model_id renders as "Modbus TCP-RTU gateway (<value>)" right in the
+        # Device info card -- the only free-text field that card has. Used
+        # here instead of hw_version, which is fixed to a global "Hardware:"
+        # label HA shares across every device in the instance.
+        model_id=f"{mtu_conf['ip']}:{mtu_conf['port']}",
+        # Explicit None (not omitted) to clear stale values from earlier
+        # versions of this call -- async_get_or_create only touches fields
+        # it's actually passed.
+        hw_version=None,
+        sw_version=None,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

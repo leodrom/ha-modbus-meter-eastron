@@ -1,6 +1,6 @@
 {
   "domain": "modbus_meter_eastron",
-  "name": "Modbus Meter Eastron (LEM)",
+  "name": "Modbus Meter Eastron",
   "codeowners": ["@leodrom"],
   "config_flow": true,
   "dependencies": [],
@@ -8,5 +8,5 @@
   "integration_type": "hub",
   "iot_class": "local_polling",
   "requirements": ["pymodbus>=3.6.6"],
-  "version": "0.3.0"
+  "version": "0.4.0"
 }
