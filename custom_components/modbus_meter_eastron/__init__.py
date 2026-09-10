@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 __all__ = ["CONFIG_SCHEMA"]
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:

@@ -12,6 +12,7 @@ CONF_MODEL = "model"
 CONF_METER_NUMBER = "meter_number"
 CONF_LOCATION = "location"
 CONF_DELAY = "delay"
+CONF_RETRIES = "retries"
 
 CONF_KEY = "key"
 CONF_REGISTER = "register"
@@ -25,6 +26,7 @@ DEFAULT_PORT = 502
 DEFAULT_TIMEOUT = 1
 DEFAULT_SCAN_INTERVAL = 15
 DEFAULT_DELAY_MS = 100
+DEFAULT_RETRIES = 3  # matches pymodbus's own AsyncModbusTcpClient default
 DEFAULT_MANUFACTURER = "eastron"
 
 PROBE_KEY = "serial_number"

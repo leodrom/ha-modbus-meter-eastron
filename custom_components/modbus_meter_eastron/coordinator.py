@@ -56,10 +56,21 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._port = mtu["port"]
         self._timeout = mtu["timeout"]
         self._default_delay_ms = mtu["delay"]
+        self._retries = mtu["retries"]
         self.devices = devices  # [{device_id, address, sensors: [...]}]
         self._client: AsyncModbusTcpClient | None = None
         self._last_read: dict[tuple[str, str], float] = {}
         self._unavailable_streak: dict[str, int] = {}
+        # Tracked separately from DataUpdateCoordinator.last_update_success:
+        # _async_update_data never raises on a connect failure (it returns {}
+        # so devices go unavailable instead of serving stale data), so
+        # last_update_success would always read True even when the MTU is
+        # unreachable. This is what the "Gateway online" binary_sensor reads.
+        self.mtu_online: bool = True
+        # Per-device online status, keyed by device_id -- True only when
+        # that device's S/N probe (PROBE_KEY) answered on the last cycle.
+        # Read by each meter's "Online" binary_sensor.
+        self.device_online: dict[str, bool] = {}
 
     async def async_shutdown(self) -> None:
         if self._client is not None:
@@ -72,7 +83,7 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 self._ip,
                 port=self._port,
                 timeout=self._timeout,
-                retries=0,
+                retries=self._retries,
                 name=self.mtu_name,
             )
 
@@ -85,11 +96,17 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                     self._ip,
                     self._port,
                 )
+                self.mtu_online = False
+                # MTU itself unreachable -- none of its devices were even
+                # probed this cycle, so all of them are offline too.
+                for device in self.devices:
+                    self.device_online[device["device_id"]] = False
                 # MTU itself is down: every device on the bus is genuinely
                 # unavailable, not just "no fresh data" -- don't keep serving
                 # stale cached values as if the bus were still healthy.
                 return {}
 
+        self.mtu_online = True
         return await self._poll_devices()
 
     async def _reconnect(self) -> None:
@@ -97,7 +114,10 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         if self._client is None:
             return
         self._client.close()
-        if not await self._client.connect():
+        if await self._client.connect():
+            self.mtu_online = True
+        else:
+            self.mtu_online = False
             _LOGGER.warning(
                 "modbus_meter_eastron: reconnect to MTU %s (%s:%s) failed",
                 self.mtu_name,
@@ -118,6 +138,7 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             if probe_sensor is not None:
                 probe_value = await self._read_register(address, probe_sensor)
                 await asyncio.sleep(delay)
+                self.device_online[device_id] = probe_value is not None
                 if probe_value is None:
                     self._mark_unavailable(device_id, address)
                     continue
@@ -148,6 +169,12 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 if value is not None:
                     device_values[key] = value
                     any_ok = True
+
+            if probe_sensor is None:
+                # No S/N to probe -- fall back to "did anything answer" as
+                # the online signal (shouldn't happen with current profiles,
+                # every device's register map includes serial_number).
+                self.device_online[device_id] = any_ok
 
             if any_ok:
                 self._unavailable_streak[device_id] = 0
@@ -186,11 +213,16 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             # the shared TCP session itself is bad, not just this one slave.
             # Reconnect so the next read (this device or the next one) gets
             # a fresh session.
-            _LOGGER.debug(
-                "modbus_meter_eastron: %s address %s '%s' socket error: %s -- reconnecting",
+            _LOGGER.warning(
+                "modbus_meter_eastron: %s (%s:%s) address %s '%s' socket error "
+                "after %d retries: %s: %s -- reconnecting",
                 self.mtu_name,
+                self._ip,
+                self._port,
                 address,
                 sensor["key"],
+                self._retries,
+                type(err).__name__,
                 err,
             )
             await self._reconnect()
@@ -199,12 +231,20 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             # Protocol-level "slave didn't answer" -- normal for an offline
             # device, the TCP session to the MTU itself is still fine, so
             # don't reconnect (that would just disrupt every other device
-            # sharing this connection for no benefit).
-            _LOGGER.debug(
-                "modbus_meter_eastron: %s address %s '%s' read failed: %s",
+            # sharing this connection for no benefit). Logged at warning
+            # (not debug) so every failed read is visible in system_log for
+            # later analysis, without needing to decode raw pymodbus byte
+            # dumps shared across every Modbus integration in this HA instance.
+            _LOGGER.warning(
+                "modbus_meter_eastron: %s (%s:%s) address %s '%s' read failed "
+                "after %d retries: %s: %s",
                 self.mtu_name,
+                self._ip,
+                self._port,
                 address,
                 sensor["key"],
+                self._retries,
+                type(err).__name__,
                 err,
             )
             return None

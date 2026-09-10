@@ -12,6 +12,7 @@ from .const import (
     DATA_TYPES,
     DEFAULT_DELAY_MS,
     DEFAULT_PORT,
+    DEFAULT_RETRIES,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TIMEOUT,
     DOMAIN,
@@ -56,6 +57,7 @@ MTU_SCHEMA = vol.Schema(
         vol.Optional("timeout", default=DEFAULT_TIMEOUT): vol.Coerce(float),
         vol.Optional("scan_interval", default=DEFAULT_SCAN_INTERVAL): cv.positive_int,
         vol.Optional("delay", default=DEFAULT_DELAY_MS): vol.Coerce(float),
+        vol.Optional("retries", default=DEFAULT_RETRIES): vol.All(vol.Coerce(int), vol.Range(min=0)),
         vol.Required("devices"): [DEVICE_SCHEMA],
     }
 )
