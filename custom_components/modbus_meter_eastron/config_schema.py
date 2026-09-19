@@ -10,6 +10,7 @@ import homeassistant.helpers.config_validation as cv
 
 from .const import (
     DATA_TYPES,
+    DEFAULT_CT_RATIO,
     DEFAULT_DELAY_MS,
     DEFAULT_PORT,
     DEFAULT_RETRIES,
@@ -45,6 +46,7 @@ DEVICE_SCHEMA = vol.Schema(
         vol.Optional("location"): cv.string,
         vol.Optional("scan_interval"): cv.positive_int,
         vol.Optional("delay"): vol.Coerce(float),
+        vol.Optional("ct_ratio", default=DEFAULT_CT_RATIO): vol.Coerce(float),
         vol.Optional("sensors", default=[]): [SENSOR_SCHEMA],
     }
 )

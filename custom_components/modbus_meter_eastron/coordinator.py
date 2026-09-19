@@ -28,7 +28,7 @@ from pymodbus.exceptions import ModbusException
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import PROBE_KEY
+from .const import CT_UNSCALED_KEYS, PROBE_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,10 +133,11 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             device_id = device["device_id"]
             address = device["address"]
             delay = device.get("delay", self._default_delay_ms) / 1000
+            ct_ratio = device.get("ct_ratio", 1.0)
 
             probe_sensor = next((s for s in device["sensors"] if s["key"] == PROBE_KEY), None)
             if probe_sensor is not None:
-                probe_value = await self._read_register(address, probe_sensor)
+                probe_value = await self._read_register(address, probe_sensor, ct_ratio)
                 await asyncio.sleep(delay)
                 self.device_online[device_id] = probe_value is not None
                 if probe_value is None:
@@ -163,7 +164,7 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                         device_values[key] = prev
                     continue
 
-                value = await self._read_register(address, sensor)
+                value = await self._read_register(address, sensor, ct_ratio)
                 await asyncio.sleep(delay)
                 self._last_read[(device_id, key)] = now
                 if value is not None:
@@ -197,7 +198,9 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 streak,
             )
 
-    async def _read_register(self, address: int, sensor: dict) -> float | int | None:
+    async def _read_register(
+        self, address: int, sensor: dict, ct_ratio: float = 1.0
+    ) -> float | int | None:
         word_count = DATATYPE_WORDS[sensor["data_type"]]
         try:
             if sensor.get("input_type", "input") == "holding":
@@ -258,5 +261,12 @@ class ModbusMtuCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         except Exception as err:  # noqa: BLE001 - never let a decode edge-case kill the cycle
             _LOGGER.debug("modbus_meter_eastron: decode failed for '%s': %s", sensor["key"], err)
             return None
+
+        if (
+            isinstance(value, float)
+            and ct_ratio != 1.0
+            and sensor["key"] not in CT_UNSCALED_KEYS
+        ):
+            value *= ct_ratio
 
         return round(value, 2) if isinstance(value, float) else value
